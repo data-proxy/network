@@ -142,6 +142,7 @@ class ArgValidatorNum(ArgValidator):
         required=False,
         val_min=None,
         val_max=None,
+        isrange=False,
         default_value=ArgValidator.DEFAULT_SENTINEL,
         numeric_type=int,
     ):
@@ -160,7 +161,18 @@ class ArgValidatorNum(ArgValidator):
     def _validate_impl(self, value, name):
         v = None
         try:
-            if isinstance(value, self.numeric_type):
+            if isinstance(value, tuple):
+                if isinstance(value[0], self.numeric_type) and isinstance(
+                    value[1], self.numeric_type
+                ):
+                    v = value
+                else:
+                    v2 = [self.numeric_type(value[0]), self.numeric_type(value[1])]
+                    if isinstance(value[0], Util.STRING_TYPE) and isinstance(
+                        value[1], Util.STRING_TYPE
+                    ):
+                        v = v2
+            elif isinstance(value, self.numeric_type):
                 v = value
             else:
                 v2 = self.numeric_type(value)
@@ -170,17 +182,38 @@ class ArgValidatorNum(ArgValidator):
             pass
         if v is None:
             raise ValidationError(
-                name, "must be an integer number but is '%s'" % (value)
-            )
-        if self.val_min is not None and v < self.val_min:
-            raise ValidationError(
-                name, "value is %s but cannot be less then %s" % (value, self.val_min)
-            )
-        if self.val_max is not None and v > self.val_max:
-            raise ValidationError(
                 name,
-                "value is %s but cannot be greater then %s" % (value, self.val_max),
+                "must be an %s or a tuple of %s, but is '%s'"
+                % (self.numeric_type, self.numeric_type, type(value)),
             )
+        if isinstance(v, tuple):
+            if v[0] > v[1]:
+                raise ValidationEror(
+                    name, "range must start with lower number than it ends"
+                )
+            if self.val_min is not None and v[0] < self.val_min:
+                raise ValidationError(
+                    name,
+                    "range starts with %s but cannot be less than %s"
+                    % (v[0], self.val_min),
+                )
+            if self.val_max is not None and v[1] > self.val_max:
+                raise ValidationError(
+                    name,
+                    "range ends with %s but cannot be greater than %s"
+                    % (v[1], self.val_max),
+                )
+        else:
+            if self.val_min is not None and v < self.val_min:
+                raise ValidationError(
+                    name,
+                    "value is %s but cannot be less then %s" % (value, self.val_min),
+                )
+            if self.val_max is not None and v > self.val_max:
+                raise ValidationError(
+                    name,
+                    "value is %s but cannot be greater then %s" % (value, self.val_max),
+                )
         return v
 
 
@@ -374,12 +407,25 @@ class ArgValidatorIPRoute(ArgValidatorDict):
                 ArgValidatorNum(
                     "metric", default_value=-1, val_min=-1, val_max=0xFFFFFFFF
                 ),
-                ArgValidatorNum("table", default_value=None, val_min=1, val_max=253),
-                ArgValidatorStr(
-                    "dev", default_value=None, enum_values=listdir("/sys/class/net/")
+                ArgValidatorNum(
+                    "table", default_value=None, val_min=1, val_max=0xFFFFFFFF
                 ),
                 ArgValidatorStr(
                     "scope", enum_values=["host", "link", "global"], default_value=None
+                ),
+                ArgValidatorStr(
+                    "type",
+                    enum_values=[
+                        "unicast",
+                        "local",
+                        "broadcast",
+                        "multicast",
+                        "throw",
+                        "unreachable",
+                        "prohibit",
+                        "blackhole",
+                    ],
+                    default_value=None,
                 ),
             ],
         )
@@ -422,11 +468,11 @@ class ArgValidatorIPRule(ArgValidatorDict):
                 ArgValidatorIP(
                     "from", family=family, required=False, plain_address=False
                 ),
-                ArgValidatorNum("from_prefix", default_value=32, val_min=0, val_max=32),
+                ArgValidatorNum("from_prefix", val_min=0, val_max=128),
                 ArgValidatorIP(
                     "to", family=family, required=False, plain_address=False
                 ),
-                ArgValidatorNum("to_prefix", default_value=32, val_min=0, val_max=32),
+                ArgValidatorNum("to_prefix", val_min=0, val_max=128),
                 ArgValidatorStr(
                     "iif", default_value=None, enum_values=listdir("/sys/class/net/")
                 ),
@@ -436,34 +482,54 @@ class ArgValidatorIPRule(ArgValidatorDict):
                 ArgValidatorNum("tos", default_value=None, val_min=0, val_max=255),
                 ArgValidatorNum("dsfield", default_value=None, val_min=0, val_max=255),
                 ArgValidatorNum("fwmark", default_value=None, val_min=0, val_max=65535),
-                # Not implemented
-                # ArgValidatorRange(
-                #     "uidrange", default_value=None, val_min=0, val_max=65535
-                # ),
-                ArgValidatorNum("ipproto", default_value=None, val_min=0, val_max=255),
-                # ArgValidatorRange(
-                #     "sport", default_value=None, val_min=0, val_max=65535
-                # ),
-                # ArgValidatorDport(
-                #     "dport", default_value=None, val_min=0, val_max=65535
-                # ),
                 ArgValidatorNum(
-                    "priority", default_value=None, val_min=0, val_max=32767
+                    "uidrange", default_value=None, val_min=0, val_max=0xFFFFFFFF
                 ),
-                ArgValidatorStr("table", default_value="main"),
+                ArgValidatorNum("ipproto", default_value=None, val_min=0, val_max=255),
+                ArgValidatorNum("sport", default_value=None, val_min=0, val_max=0xFFFF),
+                ArgValidatorNum("dport", default_value=None, val_min=0, val_max=0xFFFF),
+                ArgValidatorNum(
+                    "priority", required=True, default_value=None, val_min=0, val_max=0xFFFFFFFF
+                ),
+                ArgValidatorNum("table", default_value="main", val_min=0, val_max=0xFFFFFFFF, required=True),
                 ArgValidatorNum("protocol", default_value=None, val_min=1, val_max=255),
                 ArgValidatorNum(
-                    "suppress_prefixlength", default_value=None, val_min=0, val_max=32
-                ),
-                ArgValidatorIP(
-                    "nat", family=family, required=False, plain_address=False
+                    "suppress_prefixlength", default_value=None, val_min=0, val_max=128
                 ),
             ],
         )
         self.family = family
 
     def _validate_post(self, value, name, result):
-        # Inspection of parameters not implemented.
+        if result["from"] is None and result["to"] is None:
+            raise ValidationError(name, "either from or to needs to be specified")
+
+        if result["from"] is not None and result["to"] is not None:
+            if result["from"]["family"] != result["to"]["family"]:
+                raise ValidationError(
+                    name,
+                    "from (%s) and to (%s) address should be of the same protocol "
+                    % (result["from_addr"], result["to_addr"]),
+                )
+
+        for k in ["from", "to"]:
+            _addr = result[k]
+            if _addr is not None:
+                _family = _addr["family"]
+                if result[k + "_prefix"] is None:
+                    result[k + "_prefix"] = Util.addr_family_default_prefix(
+                        _addr["family"]
+                    )
+
+                _prefix = result[k + "_prefix"]
+                if _prefix is None:
+                    _prefix = Util.addr_family_default_prefix(result[k]["family"])
+                    result[k + "_prefix"] = _prefix
+                elif not Util.addr_family_valid_prefix(result[k]["family"], _prefix):
+                    raise ValidationError(
+                        name, "invalid %s prefix %s in '%s'" % (k, _prefix, value)
+                    )
+
 
         return result
 

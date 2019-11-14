@@ -340,13 +340,16 @@ The IP configuration supports the following options:
     Static rule configuration can be specified by a list of rules given in the `rule`
     option. The default value is an empty list. Each rule is a dictionary with the following
     entries: `type`, `from`, `from_prefix`, `to`, `to_prefix`, `iif`, `oif`, `tos`, `dsfield`, 
-    `fwmark`, `ipproto`, `sport`, `dport`, `priority`, `table`, `protocol`, `suppress_prefixlength`,
-    `suppress_ifgroup`, `realms`, `nat`. Field not supported yet are `uidrange`, and `sport`, `dport`
-    support only numbers, not ranges.
+    `fwmark`, `ipproto`, `priority`, `table`, `protocol`, `suppress_prefixlength`,
+    `suppress_ifgroup`, `realms`, `uidrange`, `sport`, `dport`. The last 3 parameters support numbers
+    or ranges of numbers.
 
     Please note that if you don't use `priority` parameter, your rules might be appended to the runtime
     configuration multiple times. Once you reboot the machine (without using `priority`), the rule list would
     become fine (without duplicates).
+
+    There is a [bug](https://bugzilla.redhat.com/show_bug.cgi?id=1700691) in RedHat/Centos 7.x, causing rules
+    with the same priority being added multiple times. There are some signs this might be fixed in 2020 RHEL 7.8 update.
 
     This is not a feature of this role, but of RHEL's networking scripts.
 

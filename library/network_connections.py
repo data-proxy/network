@@ -429,10 +429,8 @@ class IfcfgUtil:
             else:
                 ifcfg["BOOTPROTO"] = "none"
 
-            if ip["zeroconf_routes"]:
+            if ip["zeroconf_routes"] == False:
                 ifcfg["NOZEROCONF"] = "yes"
-            elif ip["zeroconf_routes"]:
-                ifcfg["NOZEROCONF"] = ""
             for i in range(0, len(addrs4)):
                 addr = addrs4[i]
                 ifcfg["IPADDR" + ("" if i == 0 else str(i))] = addr["address"]
@@ -464,22 +462,26 @@ class IfcfgUtil:
 
             route4 = []
             route6 = []
+            __route_dev_not_required = ["blackhole", "throw", "unreachable", "prohibit"]
             for r in ip["route"]:
-                line = r["network"] + "/" + str(r["prefix"])
+                line = ""
+                if r["type"]:
+                    line = r["type"] + " "
+                line += r["network"] + "/" + str(r["prefix"])
                 if r["gateway"]:
                     line += " via " + r["gateway"]
                 if r["metric"] != -1:
                     line += " metric " + str(r["metric"])
-                if r["dev"]:
-                    line += " dev " + str(r["dev"])
                 if r["scope"]:
                     line += " scope " + str(r["scope"])
                 if r["table"]:
                     line += " table " + str(r["table"])
+                if r["type"] not in __route_dev_not_required:
+                    line += " dev " + connection["interface_name"]
                 if r["family"] == socket.AF_INET:
-                    route4.append(line)
+                    route4.append(line.lstrip())
                 else:
-                    route6.append(line)
+                    route6.append(line.lstrip())
 
             route4_file = cls._ifcfg_route_merge(
                 route4,
@@ -495,15 +497,30 @@ class IfcfgUtil:
             rule4 = []
 
             for r in ip["rule"]:
+                line = ""
                 if r["from"]:
                     line = "from " + r["from"]["address"] + "/" + str(r["from_prefix"])
                 if r["to"]:
                     line += " to " + r["to"]["address"] + "/" + str(r["to_prefix"])
                 if r["table"] or r["lookup"]:
                     if r["table"] is not None and r["table"] != "":
-                        line += " table " + r["table"]
+                        line += " table " + str(r["table"])
                     else:
-                        line += " table " + r["lookup"]
+                        line += " table " + str(r["lookup"])
+                if r["uidrange"]:
+                    line += (
+                        " uidrange "
+                        + str(r["uidrange"][0])
+                        + "-"
+                        + str(r["uidrange"][1])
+                    )
+                for port in ("sport", "dport"):
+                    if r[port]:
+                        p = r[port]
+                        if isinstance(p, tuple):
+                            line += " " + port + " " + str(p[0]) + "-" + str(p[1])
+                        else:
+                            line += " sport " + str(p)
                 for k in r:
                     if (
                         k != "from"
@@ -512,6 +529,9 @@ class IfcfgUtil:
                         and k != "to_prefix"
                         and k != "lookup"
                         and k != "table"
+                        and k != "uidrange"
+                        and k != "sport"
+                        and k != "dport"
                         and r[k] is not None
                     ):
                         line += " " + k + " " + str(r[k])
@@ -1803,7 +1823,7 @@ class Cmd(object):
 
     def run_prepare(self):
         for idx, connection in enumerate(self.connections):
-            if "type" in connection and connection["check_iface_exists"]:
+           if "type" in connection and connection["check_iface_exists"]:
                 # when the profile is tied to a certain interface via
                 # 'interface_name' or 'mac', check that such an interface
                 # exists.
